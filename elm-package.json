@@ -1,0 +1,15 @@
+{
+    "version": "0.1.0",
+    "summary": "Server for a multimedia choreography executed by André Aguiar",
+    "repository": "https://github.com/pcstl/coreo-server.git",
+    "license": "MIT",
+    "source-directories": [
+        "."
+    ],
+    "exposed-modules": ["CoreoServer"],
+    "dependencies": 
+    {    "elm-lang/core": "4.0.0 <= v < 5.0.0"
+    ,    "elm-lang/html": "1.0.0 <= v < 2.0.0"
+    },
+    "elm-version": "0.17.0 <= v < 0.18.0"
+}
