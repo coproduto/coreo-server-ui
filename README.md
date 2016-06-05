@@ -1,1 +1,1 @@
-#Coreography Server
+#Choreography Server
