@@ -1,4 +1,4 @@
-module CoreoServerUI.VoteList exposing (Model, Msg, update, view, init, subscriptions)
+module CoreoServerUI.NewWordList exposing (Model, Msg, update, view, init, subscriptions)
 
 import Html as H exposing (Html)
 import Html.Attributes as Attr
@@ -19,8 +19,7 @@ type alias Votes =
   }
 
 type alias Model =
-  { currentWord : String
-  , votes : List Votes
+  { votes : List Votes
   , url : String
   }
 
@@ -35,7 +34,7 @@ type Msg
 {- ler sobre como channels funcionam pra fazer as atualizações virem por websocket -}
 init : String -> (Model, Cmd Msg)
 init url =
-  ( Model "" [] url
+  ( Model [] url
   , Task.perform UpdateListFail UpdateListSucceed (Http.get decodeVoteList url)
   )
 
@@ -45,7 +44,6 @@ update message model =
     NewVote id ->
       ({ model | votes = dispatchAction increment id model.votes
                            |> (List.sortBy (\a -> negate a.votes))
-               , currentWord = mostVoted model.votes
        }
       , Cmd.none
       )
@@ -53,10 +51,8 @@ update message model =
     UndoVote id ->
       ({ model | votes = dispatchAction decrement id model.votes
                            |> (List.sortBy (\a -> negate a.votes))
-               , currentWord = mostVoted model.votes
        }
-      , Cmd.none
-      )
+      , Cmd.none)
 
     UpdateListFail _ ->
       ( model
@@ -64,17 +60,14 @@ update message model =
       )
 
     UpdateListSucceed vList ->
-      let sorted = vList |> (List.sortBy (\a -> negate a.votes))
-      in
-        ( { model | votes = sorted
-          , currentWord = mostVoted sorted
-          }
-        , Cmd.none
-        )
-        
+      ( { model | votes = vList 
+                            |> (List.sortBy (\a -> negate a.votes))
+        }
+      , Cmd.none
+      )
+
     ResetList -> --change this one to reset on the server too
-      ( { model | votes = resetVoteList model.votes 
-                , currentWord = "" }
+      ( { model | votes = resetVoteList model.votes }
       , Cmd.none
       )
 
@@ -82,14 +75,13 @@ view : Model -> Html Msg
 view model =
   H.div 
      []
-     [ H.h2 [] [ H.text ("Palavra atual: " ++ model.currentWord) ]
-     , H.h3 [] [ H.text "Votos atuais: " ]
+     [ H.h3 [] [ H.text "Votos para nova palavra: " ]
      , H.div
         []
         [ voteList model.votes ]
      , H.button
         [ Events.onClick ResetList ]
-        [ H.text "Reiniciar votos" ]
+        [ H.text "Reiniciar votos de nova palavra" ]
      ]
 
 subscriptions : Model -> Sub Msg
@@ -128,9 +120,6 @@ decrement x = x - 1
 
 resetVoteList : List Votes -> List Votes
 resetVoteList = List.map (\vote -> { vote | votes = 0 })
-
-mostVoted : List Votes -> String
-mostVoted list = Maybe.withDefault (Votes 0 "" 0) (List.head list) |> .name
 
 --decoders for JSON data
 
