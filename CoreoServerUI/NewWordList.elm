@@ -1,4 +1,4 @@
-module CoreoServerUI.NewWordList exposing (Model, Msg, update, view, init, subscriptions)
+module CoreoServerUI.NewWordList exposing (Model, Msg(FetchList, NewWordUpdate), update, view, init, subscriptions)
 
 import Html as H exposing (Html)
 import Html.Attributes as Attr
@@ -9,6 +9,7 @@ import Task exposing (Task)
 
 import Result exposing (Result)
 import Json.Decode as Decode exposing (Decoder,(:=))
+import Json.Encode as Json
 
 import Debug
 
@@ -24,14 +25,12 @@ type alias Model =
   }
 
 type Msg 
-  = NewVote Int
-  | UndoVote Int
+  = FetchList
   | UpdateListFail Http.Error
   | UpdateListSucceed (List Votes)
   | ResetList
+  | NewWordUpdate Json.Value
 
-{- código da lista aqui -}
-{- ler sobre como channels funcionam pra fazer as atualizações virem por websocket -}
 init : String -> (Model, Cmd Msg)
 init url =
   ( Model [] url
@@ -41,18 +40,11 @@ init url =
 update : Msg -> Model -> (Model, Cmd Msg)
 update message model =
   case message of
-    NewVote id ->
-      ({ model | votes = dispatchAction increment id model.votes
-                           |> (List.sortBy (\a -> negate a.votes))
-       }
-      , Cmd.none
+    FetchList ->
+      ( model
+      , Task.perform UpdateListFail UpdateListSucceed 
+          (Http.get decodeVoteList model.url)
       )
-
-    UndoVote id ->
-      ({ model | votes = dispatchAction decrement id model.votes
-                           |> (List.sortBy (\a -> negate a.votes))
-       }
-      , Cmd.none)
 
     UpdateListFail _ ->
       ( model
@@ -61,7 +53,7 @@ update message model =
 
     UpdateListSucceed vList ->
       ( { model | votes = vList 
-                            |> (List.sortBy (\a -> negate a.votes))
+                        |> (List.sortBy (\a -> negate a.votes))
         }
       , Cmd.none
       )
@@ -70,6 +62,24 @@ update message model =
       ( { model | votes = resetVoteList model.votes }
       , Cmd.none
       )
+
+    NewWordUpdate json ->
+      let data = Decode.decodeValue decodeVote json
+      in case data of
+           Ok vote ->
+             ( { model | votes = dispatchAction 
+                                  (always vote.votes)
+                                   vote.id
+                                   model.votes
+               }
+             , Cmd.none
+             )
+                   
+           Err err ->
+             ( (Debug.log("got err " ++ err) model)
+             , Cmd.none
+             )
+
 
 view : Model -> Html Msg
 view model =
@@ -100,9 +110,6 @@ listElem : Votes -> Html Msg
 listElem vote =
   H.li []
      [ H.text (vote.name ++ ":" ++ (toString vote.votes))
-     , H.button
-         [ Events.onClick (NewVote vote.id) ]
-         [ H.text "Vote" ] 
      ]
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes

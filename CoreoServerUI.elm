@@ -23,6 +23,7 @@ import Html.App as App
 import Time exposing (Time)
 
 import Json.Decode as Decode
+import Json.Encode as Json
 
 {-| main: Start the server and web app.
 -}
@@ -41,6 +42,9 @@ type alias Model =
   , updateFrequency : Time
   , remainingTime : Int
   , isNWListLocked : Bool
+  , socket : Phoenix.Socket.Socket Msg
+  , socketUrl : String
+  , updatesChannel : Phoenix.Channel.Channel Msg
   }
 
 type Msg
@@ -49,6 +53,11 @@ type Msg
   | ToggleNWListLock
   | ToggleNWLockFail
   | ToggleNWLockSucceed
+  | FetchLists Json.Value
+  | WordUpdate Json.Value
+  | NewWordUpdate Json.Value
+  | PhoenixMsg (Phoenix.Socket.Msg Msg)
+  | Ping
 {-  | NewWordVote String
   | ShouldUpdate
   | Tick-}
@@ -71,11 +80,34 @@ initialFreq = 60 * Time.second
 init : (Model, Cmd Msg)
 init = 
   let (initialVoteList, voteListCmd) = VoteList.init wordsUrl
+
       (initialNWordList, nwListCmd)  = NewWordList.init newWordsUrl
-  in ( Model initialVoteList initialNWordList initialFreq 60 False
+
+      initSocket = Phoenix.Socket.init socketUrl
+                 |> Phoenix.Socket.withDebug
+                 |> Phoenix.Socket.on "update:word" "updates:lobby" WordUpdate
+                 |> Phoenix.Socket.on "update:new_word" "updates:lobby" NewWordUpdate
+                 |> Phoenix.Socket.on "update:invalidate_all" "updates:lobby" FetchLists
+
+      channel = Phoenix.Channel.init "updates:lobby"
+              |> Phoenix.Channel.withPayload (Json.string "")
+              |> Phoenix.Channel.onJoin FetchLists
+      
+      (socket, phxCmd) = Phoenix.Socket.join channel initSocket
+
+  in ( { voteList = initialVoteList 
+       , newWordList = initialNWordList 
+       , updateFrequency = initialFreq 
+       , remainingTime = 60 
+       , isNWListLocked = True
+       , socket = socket
+       , socketUrl = socketUrl
+       , updatesChannel = channel
+       }
      , Cmd.batch
          [ Cmd.map VoteListMsg voteListCmd
          , Cmd.map NewWordMsg nwListCmd
+         , Cmd.map PhoenixMsg phxCmd
          ] 
      )
 
@@ -107,6 +139,46 @@ update message model =
         }
       , Cmd.none
       )
+
+    FetchLists _ ->
+      let (newVoteList, voteListCmd) = VoteList.update VoteList.FetchList model.voteList
+          (newWordList, wordListCmd) = NewWordList.update NewWordList.FetchList model.newWordList
+      in 
+        ( { model | voteList = newVoteList
+                  , newWordList = newWordList 
+          }
+        , Cmd.batch
+            [ Cmd.map VoteListMsg voteListCmd
+            , Cmd.map NewWordMsg wordListCmd
+            ]
+        )
+
+    WordUpdate json ->
+      let (newVoteList, voteListCmd) = VoteList.update (VoteList.WordUpdate json) model.voteList
+      in 
+        ( { model | voteList = newVoteList }, Cmd.map VoteListMsg voteListCmd )
+
+    NewWordUpdate json ->
+      let (newWordList, wordListCmd) = NewWordList.update (NewWordList.NewWordUpdate json) model.newWordList
+      in
+        ( { model | newWordList = newWordList }, Cmd.map NewWordMsg wordListCmd )
+
+    PhoenixMsg msg ->
+      let
+        (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
+      in
+        ( { model | socket = phxSocket }
+        , Cmd.map PhoenixMsg phxCmd
+        )
+
+    Ping -> 
+      let ping = Phoenix.Push.init "ping" "updates:lobby"
+               |> Phoenix.Push.withPayload (Json.string "ping-response")
+          (socket, phxCmd) = Phoenix.Socket.push ping model.socket
+      in ( { model | socket = socket }
+         , Cmd.map PhoenixMsg phxCmd
+         )      
+
 
 {-    NewWordVote str ->
       let (list, item) = searchAndRemove str model.newWords
@@ -165,6 +237,8 @@ subscriptions model =
         , Sub.map NewWordMsg  <| NewWordList.subscriptions model.newWordList
 {-        , Time.every model.updateFrequency (\_ -> ShouldUpdate)
         , Time.every Time.second (\_ -> Tick)-}
-        ]        
+        , Phoenix.Socket.listen model.socket PhoenixMsg
+        , Time.every (5 * Time.second) (\_ -> Ping)
+        ]
     
 
