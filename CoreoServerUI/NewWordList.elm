@@ -28,6 +28,9 @@ type Msg
   = FetchList
   | UpdateListFail Http.Error
   | UpdateListSucceed (List Votes)
+  | RemoveWord Int
+  | RemoveFail Http.Error
+  | RemoveSucceed ()
   | ResetList
   | NewWordUpdate Json.Value
 
@@ -62,6 +65,30 @@ update message model =
       ( { model | votes = resetVoteList model.votes }
       , Cmd.none
       )
+
+    RemoveWord id ->
+      let httpRequest = Http.send Http.defaultSettings
+                        { verb = "DELETE"
+                        , headers = [("Accept", "application/json")
+                                    ,("Content-Type", "application/json")
+                                    ]
+                        , url = model.url ++ (toString id)
+                        , body = Http.empty
+                        }
+
+      in 
+        ( model
+        , Task.perform RemoveFail RemoveSucceed
+            (Http.fromJson decodeEmptyResponse httpRequest)
+        )
+        
+    RemoveFail err ->
+      ( Debug.log ("got err" ++ (toString err)) model
+      , Cmd.none 
+      )
+
+    RemoveSucceed _ ->
+      ( model, Cmd.none )
 
     NewWordUpdate json ->
       let data = Decode.decodeValue decodeVote json
@@ -110,6 +137,9 @@ listElem : Votes -> Html Msg
 listElem vote =
   H.li []
      [ H.text (vote.name ++ ":" ++ (toString vote.votes))
+     , H.button 
+        [ Events.onClick (RemoveWord vote.id) ]
+        [ H.text "Remover" ]
      ]
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes
@@ -129,6 +159,9 @@ resetVoteList : List Votes -> List Votes
 resetVoteList = List.map (\vote -> { vote | votes = 0 })
 
 --decoders for JSON data
+
+decodeEmptyResponse : Decoder ()
+decodeEmptyResponse = Decode.succeed ()
 
 decodeVoteList : Decoder (List Votes)
 decodeVoteList = 

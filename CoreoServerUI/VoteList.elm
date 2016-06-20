@@ -30,6 +30,9 @@ type Msg
   | UpdateListFail Http.Error
   | UpdateListSucceed (List Votes)
   | ResetList
+  | RemoveWord Int
+  | RemoveFail Http.Error
+  | RemoveSucceed ()
   | WordUpdate Json.Value
   | NoOp
 
@@ -69,6 +72,30 @@ update message model =
                 , currentWord = "" }
       , Cmd.none
       )
+
+    RemoveWord id ->
+      let httpRequest = Http.send Http.defaultSettings
+                        { verb = "DELETE"
+                        , headers = [("Accept", "application/json")
+                                    ,("Content-Type", "application/json")
+                                    ]
+                        , url = model.url ++ (toString id)
+                        , body = Http.empty
+                        }
+
+      in 
+        ( model
+        , Task.perform RemoveFail RemoveSucceed
+            (Http.fromJson decodeEmptyResponse httpRequest)
+        )
+        
+    RemoveFail err ->
+      ( Debug.log ("got err" ++ (toString err)) model
+      , Cmd.none 
+      )
+
+    RemoveSucceed _ ->
+      ( model, Cmd.none )
 
     WordUpdate json ->
       let data = Decode.decodeValue decodeVote json
@@ -116,6 +143,9 @@ listElem : Votes -> Html Msg
 listElem vote =
   H.li []
      [ H.text (vote.name ++ ":" ++ (toString vote.votes))
+     , H.button 
+        [ Events.onClick (RemoveWord vote.id) ]
+        [ H.text "Remover" ]
      ]
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes
@@ -138,6 +168,9 @@ mostVoted : List Votes -> String
 mostVoted list = Maybe.withDefault (Votes 0 "" 0) (List.head list) |> .name
 
 --decoders for JSON data
+
+decodeEmptyResponse : Decoder ()
+decodeEmptyResponse = Decode.succeed ()
 
 decodeVoteList : Decoder (List Votes)
 decodeVoteList = 
