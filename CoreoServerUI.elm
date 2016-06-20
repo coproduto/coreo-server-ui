@@ -10,10 +10,19 @@ For usage details, check main.js.
 import CoreoServerUI.VoteList as VoteList
 import CoreoServerUI.NewWordList as NewWordList
 
+import Phoenix.Socket
+import Phoenix.Channel
+import Phoenix.Push
+
+import Http
+import Task exposing (Task)
+
 import Html as H exposing (Html)
 import Html.Events as Events
 import Html.App as App
 import Time exposing (Time)
+
+import Json.Decode as Decode
 
 {-| main: Start the server and web app.
 -}
@@ -31,11 +40,15 @@ type alias Model =
   , newWordList : NewWordList.Model
   , updateFrequency : Time
   , remainingTime : Int
+  , isNWListLocked : Bool
   }
 
 type Msg
   = VoteListMsg VoteList.Msg
   | NewWordMsg NewWordList.Msg
+  | ToggleNWListLock
+  | ToggleNWLockFail
+  | ToggleNWLockSucceed
 {-  | NewWordVote String
   | ShouldUpdate
   | Tick-}
@@ -46,6 +59,12 @@ wordsUrl = "http://localhost:4000/api/v1/words/"
 newWordsUrl : String
 newWordsUrl = "http://localhost:4000/api/v1/new_words/"
 
+adminUrl : String
+adminUrl = "http://localhost:4000/api/v1/admin/"
+
+socketUrl : String
+socketUrl = "ws://localhost:4000/socket/websocket"
+
 initialFreq : Time
 initialFreq = 60 * Time.second
   
@@ -53,7 +72,7 @@ init : (Model, Cmd Msg)
 init = 
   let (initialVoteList, voteListCmd) = VoteList.init wordsUrl
       (initialNWordList, nwListCmd)  = NewWordList.init newWordsUrl
-  in ( Model initialVoteList initialNWordList initialFreq 60
+  in ( Model initialVoteList initialNWordList initialFreq 60 False
      , Cmd.batch
          [ Cmd.map VoteListMsg voteListCmd
          , Cmd.map NewWordMsg nwListCmd
@@ -70,6 +89,25 @@ update message model =
     NewWordMsg msg ->
       let (newNWList, nwListCmd) = NewWordList.update msg model.newWordList
       in ({ model | newWordList = newNWList }, Cmd.map NewWordMsg nwListCmd)
+
+    ToggleNWListLock ->
+      ( model
+      , Task.perform (\_ -> ToggleNWLockFail) (\_ -> ToggleNWLockSucceed)
+            (Http.post Decode.string 
+               (adminUrl++"lock_new_words/") Http.empty)
+      )
+
+    ToggleNWLockFail ->
+      ( Debug.log("could not toggle list lock") model
+      , Cmd.none
+      )
+
+    ToggleNWLockSucceed ->
+      ( { model | isNWListLocked = not model.isNWListLocked
+        }
+      , Cmd.none
+      )
+
 {-    NewWordVote str ->
       let (list, item) = searchAndRemove str model.newWords
       in case item of
@@ -104,6 +142,13 @@ update message model =
 view : Model -> Html Msg
 view model = 
   H.div [] [ App.map VoteListMsg <| VoteList.view model.voteList
+           , H.button
+              [ Events.onClick ToggleNWListLock ]
+              [ H.text (if model.isNWListLocked
+                        then "Desbloquear criação de novas palavras"
+                        else "Bloquear criação de novas palavras"
+                       )
+              ]
            , App.map NewWordMsg <| NewWordList.view model.newWordList
            , H.div [] [ H.text ("Tempo até a próxima atualização: " ++ 
                                   (toString model.remainingTime))
