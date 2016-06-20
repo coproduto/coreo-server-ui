@@ -92,6 +92,8 @@ init =
                  |> Phoenix.Socket.on "update:invalidate_all" "updates:lobby" FetchLists
                  |> Phoenix.Socket.on "update:invalidate_new_words" "updates:lobby" FetchNewWords
                  |> Phoenix.Socket.on "update:invalidate_words" "updates:lobby" FetchWords
+                 |> Phoenix.Socket.on "update:invalidate_words_votes" "updates:lobby" FetchWords
+                 |> Phoenix.Socket.on "update:invalidate_new_words_votes" "updates:lobby" FetchNewWords
 
       channel = Phoenix.Channel.init "updates:lobby"
               |> Phoenix.Channel.withPayload (Json.string "")
