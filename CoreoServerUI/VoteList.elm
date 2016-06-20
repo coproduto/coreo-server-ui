@@ -30,6 +30,8 @@ type Msg
   | UpdateListFail Http.Error
   | UpdateListSucceed (List Votes)
   | ResetList
+  | ResetFail Http.Error
+  | ResetSucceed ()
   | RemoveWord Int
   | RemoveFail Http.Error
   | RemoveSucceed ()
@@ -66,10 +68,20 @@ update message model =
           }
         , Cmd.none
         )
+
+    ResetList ->
+      ( model
+      , Task.perform ResetFail ResetSucceed
+          (Http.post decodeEmptyResponse (model.url++"reset/") Http.empty)
+      )
+
+    ResetFail err ->
+      ( Debug.log ("got err" ++ (toString err)) model
+      , Cmd.none 
+      )
         
-    ResetList -> --change this one to reset on the server too
-      ( { model | votes = resetVoteList model.votes 
-                , currentWord = "" }
+    ResetSucceed _ -> 
+      ( { model | currentWord = "" }
       , Cmd.none
       )
 
@@ -101,9 +113,15 @@ update message model =
       let data = Decode.decodeValue decodeVote json
       in case data of
            Ok newVote ->
-             ( { model | votes = dispatchAction (always newVote.votes) newVote.id model.votes }
-             , Cmd.none
-             )
+             let updated = dispatchAction (always newVote.votes) newVote.id model.votes
+                 sorted = updated |> (List.sortBy (\a -> negate a.votes))
+                   
+             in
+               ( { model | votes = sorted
+                         , currentWord = mostVoted sorted
+                 }
+               , Cmd.none
+               )
            Err err ->
              ( (Debug.log ("got err " ++ err) model)
              , Cmd.none

@@ -32,6 +32,8 @@ type Msg
   | RemoveFail Http.Error
   | RemoveSucceed ()
   | ResetList
+  | ResetFail Http.Error
+  | ResetSucceed ()
   | NewWordUpdate Json.Value
 
 init : String -> (Model, Cmd Msg)
@@ -61,8 +63,19 @@ update message model =
       , Cmd.none
       )
 
-    ResetList -> --change this one to reset on the server too
-      ( { model | votes = resetVoteList model.votes }
+    ResetList ->
+      ( model
+      , Task.perform ResetFail ResetSucceed
+          (Http.post decodeEmptyResponse (model.url++"reset/") Http.empty)
+      )
+
+    ResetFail err ->
+      ( Debug.log ("got err" ++ (toString err)) model
+      , Cmd.none 
+      )
+        
+    ResetSucceed _ -> 
+      ( model
       , Cmd.none
       )
 
