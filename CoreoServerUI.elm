@@ -23,7 +23,7 @@ import Html.Events as Events
 import Html.App as App
 import Time exposing (Time)
 
-import Json.Decode as Decode
+import Json.Decode as Decode exposing (Decoder, (:=))
 import Json.Encode as Json
 
 {-| main: Start the server and web app.
@@ -64,6 +64,8 @@ type Msg
   | SetVideo String
   | SetVideoFail Http.Error
   | SetVideoSucceed String
+  | LockStateFail Http.Error
+  | LockStateSucceed Bool
   | NewContent String
   | Ping
 {-  | NewWordVote String
@@ -111,6 +113,9 @@ init =
       
       (socket, phxCmd) = Phoenix.Socket.join channel initSocket
 
+      lockCmd = Task.perform LockStateFail LockStateSucceed
+                  ( Http.get decodeLockState (newWordsUrl++"lock_state/") )
+
   in ( { voteList = initialVoteList 
        , newWordList = initialNWordList 
        , updateFrequency = initialFreq 
@@ -125,6 +130,7 @@ init =
          [ Cmd.map VoteListMsg voteListCmd
          , Cmd.map NewWordMsg nwListCmd
          , Cmd.map PhoenixMsg phxCmd
+         , lockCmd
          ] 
      )
 
@@ -142,7 +148,7 @@ update message model =
     ToggleNWListLock ->
       ( model
       , Task.perform (\_ -> ToggleNWLockFail) (\_ -> ToggleNWLockSucceed)
-            (Http.post Decode.string 
+            (Http.post (Decode.succeed "")
                (adminUrl++"lock_new_words/") Http.empty)
       )
 
@@ -233,6 +239,15 @@ update message model =
 
     SetVideoSucceed _ ->
       ( { model | fieldContent = "" }, Cmd.none )
+
+    LockStateFail err ->
+      (Debug.log ("lockstate: got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    LockStateSucceed value ->
+      ( { model | isNWListLocked = value }, Cmd.none )
+      
 
     PhoenixMsg msg ->
       let
@@ -333,3 +348,9 @@ videoForm model =
              [ H.text "Confirmar vídeo" ]
          ]
      ]
+
+--json decoders
+
+decodeLockState : Decoder Bool
+decodeLockState =
+  "data" := ( "state" := Decode.bool )
