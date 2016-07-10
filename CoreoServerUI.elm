@@ -18,6 +18,7 @@ import Http
 import Task exposing (Task)
 
 import Html as H exposing (Html)
+import Html.Attributes as Attr
 import Html.Events as Events
 import Html.App as App
 import Time exposing (Time)
@@ -45,6 +46,7 @@ type alias Model =
   , socket : Phoenix.Socket.Socket Msg
   , socketUrl : String
   , updatesChannel : Phoenix.Channel.Channel Msg
+  , fieldContent : String
   }
 
 type Msg
@@ -59,22 +61,30 @@ type Msg
   | WordUpdate Json.Value
   | NewWordUpdate Json.Value
   | PhoenixMsg (Phoenix.Socket.Msg Msg)
+  | SetVideo String
+  | SetVideoFail Http.Error
+  | SetVideoSucceed String
+  | NewContent String
   | Ping
 {-  | NewWordVote String
   | ShouldUpdate
   | Tick-}
 
-wordsUrl : String
-wordsUrl = "http://localhost:4000/api/v1/words/"
-
-newWordsUrl : String
-newWordsUrl = "http://localhost:4000/api/v1/new_words/"
-
-adminUrl : String
-adminUrl = "http://localhost:4000/api/v1/admin/"
+serverUrl : String
+serverUrl = "http://localhost:4000/"
 
 socketUrl : String
 socketUrl = "ws://localhost:4000/socket/websocket"
+
+wordsUrl : String
+wordsUrl = serverUrl++"api/v1/words/"
+
+newWordsUrl : String
+newWordsUrl = serverUrl++"api/v1/new_words/"
+
+adminUrl : String
+adminUrl = serverUrl++"api/v1/admin/"
+
 
 initialFreq : Time
 initialFreq = 60 * Time.second
@@ -109,6 +119,7 @@ init =
        , socket = socket
        , socketUrl = socketUrl
        , updatesChannel = channel
+       , fieldContent = ""
        }
      , Cmd.batch
          [ Cmd.map VoteListMsg voteListCmd
@@ -189,6 +200,40 @@ update message model =
       in
         ( { model | newWordList = newWordList }, Cmd.map NewWordMsg wordListCmd )
 
+    NewContent str ->
+      ({ model | fieldContent = str}, Cmd.none)
+
+    SetVideo str ->
+      let payload = Json.encode 0
+                    <| Json.object
+                         [ ("video"
+                           , Json.object
+                              [ ("code", (Json.string str)) ]
+                           )
+                         ]
+
+          httpRequest = Http.send Http.defaultSettings
+                        { verb = "POST"
+                        , headers = [("Accept", "application/json")
+                                    ,("Content-Type", "application/json")
+                                    ]
+                        , url = adminUrl++("set_video/")
+                        , body = Http.string (Debug.log "payload" payload)
+                        }
+      in
+        ( model
+        , Task.perform SetVideoFail SetVideoSucceed
+            (Http.fromJson (Decode.succeed "") httpRequest)
+        )
+
+    SetVideoFail err ->
+      (Debug.log ("got err " ++ (toString err)) model
+      , Cmd.none
+      )
+
+    SetVideoSucceed _ ->
+      ( { model | fieldContent = "" }, Cmd.none )
+
     PhoenixMsg msg ->
       let
         (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
@@ -239,7 +284,8 @@ update message model =
 
 view : Model -> Html Msg
 view model = 
-  H.div [] [ App.map VoteListMsg <| VoteList.view model.voteList
+  H.div [] [ videoForm model
+           , App.map VoteListMsg <| VoteList.view model.voteList
            , H.button
               [ Events.onClick ToggleNWListLock ]
               [ H.text (if model.isNWListLocked
@@ -268,3 +314,22 @@ subscriptions model =
         ]
     
 
+videoForm : Model -> Html Msg
+videoForm model =
+  H.form
+     [ Attr.class "form-inline" ]
+     [ H.div
+         [ Attr.class "form-group" ]
+         [ H.input
+             [ Attr.placeholder "Insira o código do YouTube"
+             , Events.onInput NewContent
+             , Attr.value model.fieldContent
+             ] []
+         , H.button
+             [ Attr.type' "button"
+             , Attr.class "btn btn-secondary"
+             , Events.onClick (SetVideo model.fieldContent)
+             ]
+             [ H.text "Confirmar vídeo" ]
+         ]
+     ]
