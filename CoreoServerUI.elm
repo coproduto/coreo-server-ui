@@ -43,6 +43,7 @@ type alias Model =
   , updateFrequency : Time
   , remainingTime : Int
   , isNWListLocked : Bool
+  , isWListLocked : Bool
   , socket : Phoenix.Socket.Socket Msg
   , socketUrl : String
   , updatesChannel : Phoenix.Channel.Channel Msg
@@ -55,6 +56,9 @@ type Msg
   | ToggleNWListLock
   | ToggleNWLockFail
   | ToggleNWLockSucceed
+  | ToggleWListLock
+  | ToggleWLockFail
+  | ToggleWLockSucceed
   | FetchLists Json.Value
   | FetchNewWords Json.Value
   | FetchWords Json.Value
@@ -66,6 +70,8 @@ type Msg
   | SetVideoSucceed String
   | LockStateFail Http.Error
   | LockStateSucceed Bool
+  | WLockStateFail Http.Error
+  | WLockStateSucceed Bool
   | NewContent String
   | Ping
 {-  | NewWordVote String
@@ -116,11 +122,15 @@ init =
       lockCmd = Task.perform LockStateFail LockStateSucceed
                   ( Http.get decodeLockState (newWordsUrl++"lock_state/") )
 
+      wLockCmd = Task.perform WLockStateFail WLockStateSucceed
+                 ( Http.get decodeLockState (wordsUrl++"lock_state/") )
+
   in ( { voteList = initialVoteList 
        , newWordList = initialNWordList 
        , updateFrequency = initialFreq 
        , remainingTime = 60 
        , isNWListLocked = True
+       , isWListLocked = True
        , socket = socket
        , socketUrl = socketUrl
        , updatesChannel = channel
@@ -131,6 +141,7 @@ init =
          , Cmd.map NewWordMsg nwListCmd
          , Cmd.map PhoenixMsg phxCmd
          , lockCmd
+         , wLockCmd
          ] 
      )
 
@@ -159,6 +170,24 @@ update message model =
 
     ToggleNWLockSucceed ->
       ( { model | isNWListLocked = not model.isNWListLocked
+        }
+      , Cmd.none
+      )
+
+    ToggleWListLock ->
+      ( model
+      , Task.perform (\_ -> ToggleWLockFail) (\_ -> ToggleWLockSucceed)
+            (Http.post (Decode.succeed "")
+               (adminUrl++"lock_words/") Http.empty)
+      )
+
+    ToggleWLockFail ->
+      ( Debug.log("could not toggle wlist lock") model
+      , Cmd.none
+      )
+
+    ToggleWLockSucceed ->
+      ( { model | isWListLocked = not model.isWListLocked
         }
       , Cmd.none
       )
@@ -247,7 +276,14 @@ update message model =
 
     LockStateSucceed value ->
       ( { model | isNWListLocked = value }, Cmd.none )
+
+    WLockStateFail err ->
+      (Debug.log ("wlockstate: got err " ++ (toString err)) model
+      , Cmd.none
+      )
       
+    WLockStateSucceed value ->
+      ( { model | isWListLocked = value }, Cmd.none )
 
     PhoenixMsg msg ->
       let
@@ -300,6 +336,13 @@ update message model =
 view : Model -> Html Msg
 view model = 
   H.div [] [ videoForm model
+           , H.button
+              [ Events.onClick ToggleWListLock ]
+              [ H.text (if model.isWListLocked
+                        then "Iniciar votação"
+                        else "Encerrar votação"
+                       )
+              ]
            , App.map VoteListMsg <| VoteList.view model.voteList
            , H.button
               [ Events.onClick ToggleNWListLock ]
