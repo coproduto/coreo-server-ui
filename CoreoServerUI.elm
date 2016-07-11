@@ -72,6 +72,7 @@ type Msg
   | LockStateSucceed Bool
   | WLockStateFail Http.Error
   | WLockStateSucceed Bool
+  | SetCurrentWord Json.Value
   | NewContent String
   | Ping
 {-  | NewWordVote String
@@ -112,6 +113,7 @@ init =
                  |> Phoenix.Socket.on "update:invalidate_words" "updates:lobby" FetchWords
                  |> Phoenix.Socket.on "update:invalidate_words_votes" "updates:lobby" FetchWords
                  |> Phoenix.Socket.on "update:invalidate_new_words_votes" "updates:lobby" FetchNewWords
+                 |> Phoenix.Socket.on "update:end_voting" "updates:lobby" SetCurrentWord
 
       channel = Phoenix.Channel.init "updates:lobby"
               |> Phoenix.Channel.withPayload (Json.string "")
@@ -285,6 +287,19 @@ update message model =
     WLockStateSucceed value ->
       ( { model | isWListLocked = value }, Cmd.none )
 
+    SetCurrentWord json ->
+      let data = Decode.decodeValue decodeWinner json
+      in case data of
+           Ok winner ->
+             let (newVoteList, vListCmd) = VoteList.update (VoteList.SetWord winner) model.voteList
+             in 
+               ( { model | voteList = newVoteList }, Cmd.map VoteListMsg vListCmd )
+
+           Err str ->
+             ( Debug.log str model
+             , Cmd.none
+             )                  
+
     PhoenixMsg msg ->
       let
         (phxSocket, phxCmd) = Phoenix.Socket.update msg model.socket
@@ -337,7 +352,9 @@ view : Model -> Html Msg
 view model = 
   H.div [] [ videoForm model
            , H.button
-              [ Events.onClick ToggleWListLock ]
+              [ Events.onClick ToggleWListLock 
+              , Attr.class "btn btn-primary"
+              ]
               [ H.text (if model.isWListLocked
                         then "Iniciar votação"
                         else "Encerrar votação"
@@ -345,16 +362,18 @@ view model =
               ]
            , App.map VoteListMsg <| VoteList.view model.voteList
            , H.button
-              [ Events.onClick ToggleNWListLock ]
+              [ Events.onClick ToggleNWListLock 
+              , Attr.class "btn btn-primary"
+              ]
               [ H.text (if model.isNWListLocked
                         then "Desbloquear criação de novas palavras"
                         else "Bloquear criação de novas palavras"
                        )
               ]
            , App.map NewWordMsg <| NewWordList.view model.newWordList
-           , H.div [] [ H.text ("Tempo até a próxima atualização: " ++ 
-                                  (toString model.remainingTime))
-                      ]
+{-           , H.div [] [ H.text ("Tempo até a próxima atualização: " ++ 
+                                 (toString model.remainingTime))
+                      ]-}
 {-           , H.button 
                [ Events.onClick ShouldUpdate ] 
                [ H.text "Atualizar agora" ]-}
@@ -397,3 +416,7 @@ videoForm model =
 decodeLockState : Decoder Bool
 decodeLockState =
   "data" := ( "state" := Decode.bool )
+
+decodeWinner : Decoder String
+decodeWinner = 
+  "winner" := Decode.string

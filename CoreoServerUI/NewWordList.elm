@@ -130,7 +130,10 @@ view model =
         []
         [ voteList model.votes ]
      , H.button
-        [ Events.onClick ResetList ]
+        [ Events.onClick ResetList 
+        , Attr.type' "button"
+        , Attr.class "btn btn-primary"
+        ]
         [ H.text "Reiniciar votos de nova palavra" ]
      ]
 
@@ -144,15 +147,23 @@ voteList : List Votes -> Html Msg
 voteList vList =
   let list =
     List.map listElem vList
-  in H.ul [] list
+  in H.ul 
+       [ Attr.class "list-group row" ] list
 
 listElem : Votes -> Html Msg
 listElem vote =
-  H.li []
+  H.li 
+     [ Attr.class "list-group-item clearfix col-xs-6" ]
      [ H.text (vote.name ++ ":" ++ (toString vote.votes))
-     , H.button 
-        [ Events.onClick (RemoveWord vote.id) ]
-        [ H.text "Remover" ]
+     , H.span
+         [ Attr.class "pull-right" ]
+         [ H.button 
+             [ Events.onClick (RemoveWord vote.id) 
+             , Attr.type' "button" 
+             , Attr.class "btn btn-secondary" 
+             ]
+             [ H.text "Remover" ]
+         ]
      ]
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes

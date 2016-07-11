@@ -1,4 +1,4 @@
-module CoreoServerUI.VoteList exposing (Model, Msg(FetchList, WordUpdate), update, view, init, subscriptions)
+module CoreoServerUI.VoteList exposing (Model, Msg(FetchList, WordUpdate, SetWord), update, view, init, subscriptions)
 
 import Html as H exposing (Html)
 import Html.Attributes as Attr
@@ -36,15 +36,16 @@ type Msg
   | RemoveFail Http.Error
   | RemoveSucceed ()
   | WordUpdate Json.Value
+  | SetWord String
   | NoOp
 
-{- código da lista aqui -}
-{- ler sobre como channels funcionam pra fazer as atualizações virem por websocket -}
+
 init : String -> (Model, Cmd Msg)
 init url =
   ( Model "" [] url
   , Cmd.none
   )
+
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update message model =
@@ -64,7 +65,6 @@ update message model =
       let sorted = vList |> (List.sortBy (\a -> negate a.votes))
       in
         ( { model | votes = sorted
-          , currentWord = mostVoted sorted
           }
         , Cmd.none
         )
@@ -118,7 +118,6 @@ update message model =
                    
              in
                ( { model | votes = sorted
-                         , currentWord = mostVoted sorted
                  }
                , Cmd.none
                )
@@ -126,6 +125,9 @@ update message model =
              ( (Debug.log ("got err " ++ err) model)
              , Cmd.none
              )
+
+    SetWord word ->
+      ( { model | currentWord = word }, Cmd.none )
 
     NoOp ->
       (model, Cmd.none)
@@ -141,7 +143,8 @@ view model =
         []
         [ voteList model.votes ]
      , H.button
-        [ Events.onClick ResetList ]
+        [ Events.onClick ResetList 
+        , Attr.class "btn btn-primary" ]
         [ H.text "Reiniciar votos" ]
      ]
 
@@ -155,15 +158,22 @@ voteList : List Votes -> Html Msg
 voteList vList =
   let list =
     List.map listElem vList
-  in H.ul [] list
+  in H.ul 
+       [ Attr.class "list-group row " ] list
 
 listElem : Votes -> Html Msg
 listElem vote =
-  H.li []
-     [ H.text (vote.name ++ ":" ++ (toString vote.votes))
-     , H.button 
-        [ Events.onClick (RemoveWord vote.id) ]
-        [ H.text "Remover" ]
+  H.li 
+     [ Attr.class "list-group-item clearfix col-xs-6" ]
+     [ H.text (vote.name ++ ":\t" ++ (toString vote.votes))
+     , H.span
+        [ Attr.class "pull-right" ]
+        [ H.button 
+            [ Events.onClick (RemoveWord vote.id) 
+            , Attr.class "btn btn-secondary" 
+            ]
+            [ H.text "Remover" ]
+        ]
      ]
 
 dispatchAction : (Int -> Int) -> Int -> List Votes -> List Votes
